@@ -1,280 +1,244 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { useIncidents } from '../context/IncidentsContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
+
+const emptyForm = {
+  name: '',
+  description: '',
+  location: '',
+  severity: 'средний',
+  date: '',
+  measures: ''
+};
+
+const toFormState = (data) => ({
+  name: data.name ?? '',
+  description: data.description ?? '',
+  location: data.location ?? '',
+  severity: data.severity || 'средний',
+  date: data.date ?? '',
+  measures: data.measures ?? ''
+});
 
 const Edit = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    location: '',
-    severity: 'средний',
-    date: '',
-    measures: ''
-  });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
+  const { fetchIncidentById, updateIncident, error, clearError } = useIncidents();
+  const [formData, setFormData] = useState(emptyForm);
+  const [pageReady, setPageReady] = useState(false);
+  const [loadOk, setLoadOk] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
 
+  const load = useCallback(async () => {
+    clearError();
+    setPageReady(false);
+    setLoadOk(false);
+    try {
+      const data = await fetchIncidentById(id);
+      setFormData(toFormState(data));
+      setLoadOk(true);
+    } catch {
+      setLoadOk(false);
+    } finally {
+      setPageReady(true);
+    }
+  }, [id, fetchIncidentById, clearError]);
+
   useEffect(() => {
-    const fetchIncident = async () => {
-      try {
-        const response = await axios.get(`http://localhost:5000/incidents/${id}`);
-        setFormData(response.data);
-      } catch (err) {
-        setError(err.message || 'Не удалось загрузить инцидент');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchIncident();
-  }, [id]);
+    load();
+  }, [load]);
 
   const validateForm = () => {
     const errors = {};
-    
+
     if (!formData.name.trim()) {
       errors.name = 'Название инцидента обязательно';
-    } else if (formData.name.length < 3) {
+    } else if (formData.name.trim().length < 3) {
       errors.name = 'Название должно содержать минимум 3 символа';
     }
-    
+
     if (!formData.description.trim()) {
       errors.description = 'Описание инцидента обязательно';
-    } else if (formData.description.length < 10) {
+    } else if (formData.description.trim().length < 10) {
       errors.description = 'Описание должно содержать минимум 10 символов';
     }
-    
+
     if (!formData.location.trim()) {
       errors.location = 'Место проведения обязательно';
     }
-    
+
     if (!formData.date) {
       errors.date = 'Дата проведения обязательна';
+    } else {
+      const selectedDate = new Date(formData.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (selectedDate > today) {
+        errors.date = 'Дата не может быть в будущем';
+      }
     }
-    
+
+    if (!['низкий', 'средний', 'высокий', 'критический'].includes(formData.severity)) {
+      errors.severity = 'Выберите уровень опасности';
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (validationErrors[name]) {
-      setValidationErrors(prev => ({ ...prev, [name]: '' }));
+      setValidationErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!validateForm()) {
       return;
     }
-    
-    setSaving(true);
-    setError(null);
-    
+    clearError();
+    setSubmitting(true);
     try {
-      await axios.put(`http://localhost:5000/incidents/${id}`, formData);
-      alert('Инцидент успешно обновлен!');
+      await updateIncident(id, formData);
       navigate(`/detail/${id}`);
-    } catch (err) {
-      setError(err.message || 'Не удалось сохранить изменения');
+    } catch {
+      /* ошибка в контексте */
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (!pageReady) {
+    return <LoadingSpinner fullPage label="Загрузка инцидента…" />;
+  }
+
+  if (!loadOk) {
+    return (
+      <div className="page-narrow">
+        <ErrorMessage
+          message={error || 'Не удалось загрузить инцидент'}
+          onRetry={load}
+          onClose={clearError}
+        />
+        <Link to="/" className="btn btn--secondary">← На главную</Link>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '600px', margin: '0 auto' }}>
-      <Link to={`/detail/${id}`}>
-        <button style={{
-          padding: '8px 16px',
-          backgroundColor: '#666',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer',
-          marginBottom: '20px'
-        }}>
-          ← Назад к инциденту
-        </button>
-      </Link>
+    <div className="page-narrow form-page">
+      {submitting && (
+        <div className="form-overlay" aria-busy="true">
+          <LoadingSpinner label="Сохранение…" />
+        </div>
+      )}
 
-      <h1>✏ Редактирование инцидента</h1>
+      <div className="page-toolbar">
+        <Link to={`/detail/${id}`} className="btn btn--ghost">← К карточке</Link>
+      </div>
 
-      {error && <ErrorMessage message={error} />}
+      <h1 className="page-title">Редактирование</h1>
+      <p className="page-lead">Измените поля и сохраните</p>
 
-      <form onSubmit={handleSubmit} style={{ marginTop: '20px' }}>
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Название инцидента *
-          </label>
+      {error && (
+        <ErrorMessage message={error} onClose={clearError} />
+      )}
+
+      <form className="card form-card" onSubmit={handleSubmit} noValidate>
+        <div className="field">
+          <label className="field-label" htmlFor="e-name">Название *</label>
           <input
+            id="e-name"
             type="text"
             name="name"
             value={formData.name}
             onChange={handleChange}
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: validationErrors.name ? '2px solid #f44336' : '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px'
-            }}
+            className={`field-input${validationErrors.name ? ' field-input--invalid' : ''}`}
           />
-          {validationErrors.name && (
-            <p style={{ color: '#f44336', fontSize: '14px', marginTop: '5px' }}>{validationErrors.name}</p>
-          )}
+          {validationErrors.name && <p className="field-error">{validationErrors.name}</p>}
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Описание инцидента *
-          </label>
+        <div className="field">
+          <label className="field-label" htmlFor="e-desc">Описание *</label>
           <textarea
+            id="e-desc"
             name="description"
             value={formData.description}
             onChange={handleChange}
-            rows="4"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: validationErrors.description ? '2px solid #f44336' : '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px',
-              resize: 'vertical'
-            }}
+            rows={4}
+            className={`field-input field-input--area${validationErrors.description ? ' field-input--invalid' : ''}`}
           />
-          {validationErrors.description && (
-            <p style={{ color: '#f44336', fontSize: '14px', marginTop: '5px' }}>{validationErrors.description}</p>
-          )}
+          {validationErrors.description && <p className="field-error">{validationErrors.description}</p>}
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Место проведения *
-          </label>
+        <div className="field">
+          <label className="field-label" htmlFor="e-loc">Место *</label>
           <input
+            id="e-loc"
             type="text"
             name="location"
             value={formData.location}
             onChange={handleChange}
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: validationErrors.location ? '2px solid #f44336' : '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px'
-            }}
+            className={`field-input${validationErrors.location ? ' field-input--invalid' : ''}`}
           />
-          {validationErrors.location && (
-            <p style={{ color: '#f44336', fontSize: '14px', marginTop: '5px' }}>{validationErrors.location}</p>
-          )}
+          {validationErrors.location && <p className="field-error">{validationErrors.location}</p>}
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Дата проведения *
-          </label>
-          <input
-            type="date"
-            name="date"
-            value={formData.date}
-            onChange={handleChange}
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: validationErrors.date ? '2px solid #f44336' : '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px'
-            }}
-          />
-          {validationErrors.date && (
-            <p style={{ color: '#f44336', fontSize: '14px', marginTop: '5px' }}>{validationErrors.date}</p>
-          )}
+        <div className="field-row">
+          <div className="field field--grow">
+            <label className="field-label" htmlFor="e-date">Дата *</label>
+            <input
+              id="e-date"
+              type="date"
+              name="date"
+              value={formData.date}
+              onChange={handleChange}
+              className={`field-input${validationErrors.date ? ' field-input--invalid' : ''}`}
+            />
+            {validationErrors.date && <p className="field-error">{validationErrors.date}</p>}
+          </div>
+          <div className="field field--grow">
+            <label className="field-label" htmlFor="e-sev">Уровень *</label>
+            <select
+              id="e-sev"
+              name="severity"
+              value={formData.severity}
+              onChange={handleChange}
+              className={`field-input${validationErrors.severity ? ' field-input--invalid' : ''}`}
+            >
+              <option value="низкий">Низкий</option>
+              <option value="средний">Средний</option>
+              <option value="высокий">Высокий</option>
+              <option value="критический">Критический</option>
+            </select>
+            {validationErrors.severity && <p className="field-error">{validationErrors.severity}</p>}
+          </div>
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Уровень опасности *
-          </label>
-          <select
-            name="severity"
-            value={formData.severity}
-            onChange={handleChange}
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px'
-            }}
-          >
-            <option value="низкий">🟢 Низкий</option>
-            <option value="средний">🟡 Средний</option>
-            <option value="высокий">🟠 Высокий</option>
-            <option value="критический">🔴 Критический</option>
-          </select>
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Принятые меры
-          </label>
+        <div className="field">
+          <label className="field-label" htmlFor="e-measures">Принятые меры</label>
           <textarea
+            id="e-measures"
             name="measures"
             value={formData.measures}
             onChange={handleChange}
-            rows="3"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px',
-              resize: 'vertical'
-            }}
+            rows={3}
+            className="field-input field-input--area"
           />
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-          <button
-            type="submit"
-            disabled={saving}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: saving ? '#ccc' : '#FF9800',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontSize: '16px'
-            }}
-          >
-            {saving ? 'Сохранение...' : '💾 Сохранить изменения'}
+        <div className="btn-row">
+          <button type="submit" className="btn btn--primary" disabled={submitting}>
+            Сохранить
           </button>
-          <button
-            type="button"
-            onClick={() => navigate(`/detail/${id}`)}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: '#f44336',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              fontSize: '16px'
-            }}
-          >
-            ❌ Отмена
+          <button type="button" className="btn btn--ghost" onClick={() => navigate(`/detail/${id}`)} disabled={submitting}>
+            Отмена
           </button>
         </div>
       </form>

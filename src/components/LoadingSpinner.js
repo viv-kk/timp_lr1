@@ -1,33 +1,12 @@
 import React from 'react';
 
-const LoadingSpinner = () => {
+const LoadingSpinner = ({ fullPage, label = 'Загрузка…' }) => {
+  const wrapClass = fullPage ? 'spinner-wrap spinner-wrap--full' : 'spinner-wrap';
+
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: '40px',
-      fontSize: '18px',
-      color: '#666'
-    }}>
-      <div style={{
-        border: '4px solid #f3f3f3',
-        borderTop: '4px solid #3498db',
-        borderRadius: '50%',
-        width: '40px',
-        height: '40px',
-        animation: 'spin 1s linear infinite',
-        marginRight: '10px'
-      }} />
-      <span>Загрузка...</span>
-      <style>
-        {`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}
-      </style>
+    <div className={wrapClass} role="status" aria-live="polite">
+      <div className="spinner" aria-hidden />
+      <span className="spinner-label">{label}</span>
     </div>
   );
 };

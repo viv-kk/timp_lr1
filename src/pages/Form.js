@@ -1,42 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { useIncidents } from '../context/IncidentsContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 
+const initialForm = () => ({
+  name: '',
+  description: '',
+  location: '',
+  severity: 'средний',
+  date: new Date().toISOString().split('T')[0],
+  measures: ''
+});
+
 const Form = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    location: '',
-    severity: 'средний',
-    date: new Date().toISOString().split('T')[0],
-    measures: ''
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const { addIncident, error, clearError } = useIncidents();
+  const [formData, setFormData] = useState(initialForm);
+  const [submitting, setSubmitting] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+
+  useEffect(() => {
+    clearError();
+  }, [clearError]);
 
   const validateForm = () => {
     const errors = {};
-    
+
     if (!formData.name.trim()) {
       errors.name = 'Название инцидента обязательно';
-    } else if (formData.name.length < 3) {
+    } else if (formData.name.trim().length < 3) {
       errors.name = 'Название должно содержать минимум 3 символа';
     }
-    
+
     if (!formData.description.trim()) {
       errors.description = 'Описание инцидента обязательно';
-    } else if (formData.description.length < 10) {
+    } else if (formData.description.trim().length < 10) {
       errors.description = 'Описание должно содержать минимум 10 символов';
     }
-    
+
     if (!formData.location.trim()) {
       errors.location = 'Место проведения мероприятия обязательно';
     }
-    
+
     if (!formData.date) {
       errors.date = 'Дата проведения обязательна';
     } else {
@@ -47,234 +53,155 @@ const Form = () => {
         errors.date = 'Дата не может быть в будущем';
       }
     }
-    
+
+    if (!['низкий', 'средний', 'высокий', 'критический'].includes(formData.severity)) {
+      errors.severity = 'Выберите уровень опасности';
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (validationErrors[name]) {
-      setValidationErrors(prev => ({ ...prev, [name]: '' }));
+      setValidationErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!validateForm()) {
       return;
     }
-    
-    setLoading(true);
-    setError(null);
-    
+    clearError();
+    setSubmitting(true);
     try {
-      await axios.post('http://localhost:5000/incidents', formData);
-      alert('Инцидент успешно зарегистрирован!');
+      await addIncident(formData);
       navigate('/');
-    } catch (err) {
-      setError(err.message || 'Не удалось добавить инцидент');
-      console.error('Ошибка отправки:', err);
+    } catch {
+      /* ошибка уже в контексте */
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  if (loading) return <LoadingSpinner />;
-
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '600px', margin: '0 auto' }}>
-      <Link to="/">
-        <button style={{
-          padding: '8px 16px',
-          backgroundColor: '#666',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer',
-          marginBottom: '20px'
-        }}>
-          ← Назад к списку
-        </button>
-      </Link>
+    <div className="page-narrow form-page">
+      {submitting && (
+        <div className="form-overlay" aria-busy="true">
+          <LoadingSpinner label="Сохранение…" />
+        </div>
+      )}
 
-      <h1>➕ Регистрация инцидента</h1>
-      <p style={{ color: '#666', marginBottom: '20px' }}>
-        Заполните информацию о произошедшем инциденте на мероприятии
+      <div className="page-toolbar">
+        <Link to="/" className="btn btn--ghost">← К списку</Link>
+      </div>
+
+      <h1 className="page-title">Новый инцидент</h1>
+      <p className="page-lead">
+        Заполните данные о произошедшем на мероприятии
       </p>
 
-      {error && <ErrorMessage message={error} />}
+      {error && (
+        <ErrorMessage message={error} onClose={clearError} />
+      )}
 
-      <form onSubmit={handleSubmit} style={{ marginTop: '20px' }}>
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Название инцидента *
-          </label>
+      <form className="card form-card" onSubmit={handleSubmit} noValidate>
+        <div className="field">
+          <label className="field-label" htmlFor="f-name">Название *</label>
           <input
+            id="f-name"
             type="text"
             name="name"
             value={formData.name}
             onChange={handleChange}
-            placeholder="Например: Драка между участниками"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: validationErrors.name ? '2px solid #f44336' : '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px'
-            }}
+            className={`field-input${validationErrors.name ? ' field-input--invalid' : ''}`}
+            placeholder="Например: конфликт на трибунах"
+            autoComplete="off"
           />
-          {validationErrors.name && (
-            <p style={{ color: '#f44336', fontSize: '14px', marginTop: '5px' }}>{validationErrors.name}</p>
-          )}
+          {validationErrors.name && <p className="field-error">{validationErrors.name}</p>}
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Описание инцидента *
-          </label>
+        <div className="field">
+          <label className="field-label" htmlFor="f-desc">Описание *</label>
           <textarea
+            id="f-desc"
             name="description"
             value={formData.description}
             onChange={handleChange}
-            placeholder="Подробное описание произошедшего..."
-            rows="4"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: validationErrors.description ? '2px solid #f44336' : '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px',
-              resize: 'vertical'
-            }}
+            className={`field-input field-input--area${validationErrors.description ? ' field-input--invalid' : ''}`}
+            placeholder="Что произошло, последствия, кто участвовал…"
+            rows={4}
           />
-          {validationErrors.description && (
-            <p style={{ color: '#f44336', fontSize: '14px', marginTop: '5px' }}>{validationErrors.description}</p>
-          )}
+          {validationErrors.description && <p className="field-error">{validationErrors.description}</p>}
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Место проведения мероприятия *
-          </label>
+        <div className="field">
+          <label className="field-label" htmlFor="f-loc">Место *</label>
           <input
+            id="f-loc"
             type="text"
             name="location"
             value={formData.location}
             onChange={handleChange}
-            placeholder="Например: Стадион 'Лужники', сектор А"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: validationErrors.location ? '2px solid #f44336' : '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px'
-            }}
+            className={`field-input${validationErrors.location ? ' field-input--invalid' : ''}`}
+            placeholder="Площадка, сектор, зона"
           />
-          {validationErrors.location && (
-            <p style={{ color: '#f44336', fontSize: '14px', marginTop: '5px' }}>{validationErrors.location}</p>
-          )}
+          {validationErrors.location && <p className="field-error">{validationErrors.location}</p>}
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Дата проведения мероприятия *
-          </label>
-          <input
-            type="date"
-            name="date"
-            value={formData.date}
-            onChange={handleChange}
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: validationErrors.date ? '2px solid #f44336' : '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px'
-            }}
-          />
-          {validationErrors.date && (
-            <p style={{ color: '#f44336', fontSize: '14px', marginTop: '5px' }}>{validationErrors.date}</p>
-          )}
+        <div className="field-row">
+          <div className="field field--grow">
+            <label className="field-label" htmlFor="f-date">Дата *</label>
+            <input
+              id="f-date"
+              type="date"
+              name="date"
+              value={formData.date}
+              onChange={handleChange}
+              className={`field-input${validationErrors.date ? ' field-input--invalid' : ''}`}
+            />
+            {validationErrors.date && <p className="field-error">{validationErrors.date}</p>}
+          </div>
+          <div className="field field--grow">
+            <label className="field-label" htmlFor="f-sev">Уровень *</label>
+            <select
+              id="f-sev"
+              name="severity"
+              value={formData.severity}
+              onChange={handleChange}
+              className={`field-input${validationErrors.severity ? ' field-input--invalid' : ''}`}
+            >
+              <option value="низкий">Низкий</option>
+              <option value="средний">Средний</option>
+              <option value="высокий">Высокий</option>
+              <option value="критический">Критический</option>
+            </select>
+            {validationErrors.severity && <p className="field-error">{validationErrors.severity}</p>}
+          </div>
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Уровень опасности *
-          </label>
-          <select
-            name="severity"
-            value={formData.severity}
-            onChange={handleChange}
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px',
-              backgroundColor: 'white'
-            }}
-          >
-            <option value="низкий">🟢 Низкий - незначительные нарушения</option>
-            <option value="средний">🟡 Средний - требуется вмешательство служб</option>
-            <option value="высокий">🟠 Высокий - угроза безопасности</option>
-            <option value="критический">🔴 Критический - эвакуация, пострадавшие</option>
-          </select>
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-            Принятые меры
-          </label>
+        <div className="field">
+          <label className="field-label" htmlFor="f-measures">Принятые меры</label>
           <textarea
+            id="f-measures"
             name="measures"
             value={formData.measures}
             onChange={handleChange}
-            placeholder="Опишите, какие меры были приняты для устранения инцидента..."
-            rows="3"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid #ddd',
-              borderRadius: '5px',
-              fontSize: '16px',
-              resize: 'vertical'
-            }}
+            className="field-input field-input--area"
+            placeholder="Что сделали службы, полиция, медики…"
+            rows={3}
           />
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: loading ? '#ccc' : '#4CAF50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '16px'
-            }}
-          >
-            {loading ? 'Сохранение...' : '➕ Зарегистрировать инцидент'}
+        <div className="btn-row">
+          <button type="submit" className="btn btn--primary" disabled={submitting}>
+            Зарегистрировать
           </button>
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: '#f44336',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              fontSize: '16px'
-            }}
-          >
-            ❌ Отмена
+          <button type="button" className="btn btn--ghost" onClick={() => navigate('/')} disabled={submitting}>
+            Отмена
           </button>
         </div>
       </form>

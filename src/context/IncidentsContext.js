@@ -3,6 +3,28 @@ import axios from 'axios';
 
 const API_URL = 'http://localhost:5000/incidents';
 
+const idsEqual = (a, b) => String(a) === String(b);
+
+export const formatIncidentApiError = (err) => {
+  if (err.response) {
+    const status = err.response.status;
+    switch (status) {
+      case 400:
+        return 'Некорректный запрос. Проверьте введенные данные.';
+      case 404:
+        return 'Запрашиваемый ресурс не найден.';
+      case 500:
+        return 'Внутренняя ошибка сервера. Попробуйте позже.';
+      default:
+        return `Ошибка сервера: ${status}`;
+    }
+  }
+  if (err.request) {
+    return 'Не удалось связаться с сервером. Проверьте подключение.';
+  }
+  return 'Произошла ошибка при отправке запроса.';
+};
+
 const IncidentsContext = createContext();
 
 export const useIncidents = () => {
@@ -19,27 +41,7 @@ export const IncidentsProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const clearError = () => setError(null);
-
-  const handleApiError = (err) => {
-    if (err.response) {
-      const status = err.response.status;
-      switch (status) {
-        case 400:
-          return 'Некорректный запрос. Проверьте введенные данные.';
-        case 404:
-          return 'Запрашиваемый ресурс не найден.';
-        case 500:
-          return 'Внутренняя ошибка сервера. Попробуйте позже.';
-        default:
-          return `Ошибка сервера: ${status}`;
-      }
-    } else if (err.request) {
-      return 'Не удалось связаться с сервером. Проверьте подключение.';
-    } else {
-      return 'Произошла ошибка при отправке запроса.';
-    }
-  };
+  const clearError = useCallback(() => setError(null), []);
 
   const fetchIncidents = useCallback(async () => {
     setLoading(true);
@@ -49,7 +51,7 @@ export const IncidentsProvider = ({ children }) => {
       setIncidents(response.data);
       return response.data;
     } catch (err) {
-      const errorMessage = handleApiError(err);
+      const errorMessage = formatIncidentApiError(err);
       setError(errorMessage);
       console.error('Ошибка загрузки:', err);
       throw err;
@@ -66,7 +68,7 @@ export const IncidentsProvider = ({ children }) => {
       setCurrentIncident(response.data);
       return response.data;
     } catch (err) {
-      const errorMessage = handleApiError(err);
+      const errorMessage = formatIncidentApiError(err);
       setError(errorMessage);
       console.error('Ошибка загрузки:', err);
       throw err;
@@ -76,7 +78,6 @@ export const IncidentsProvider = ({ children }) => {
   }, []);
 
   const addIncident = useCallback(async (incidentData) => {
-    setLoading(true);
     setError(null);
     try {
       const response = await axios.post(API_URL, incidentData, {
@@ -85,53 +86,44 @@ export const IncidentsProvider = ({ children }) => {
       setIncidents(prev => [...prev, response.data]);
       return response.data;
     } catch (err) {
-      const errorMessage = handleApiError(err);
+      const errorMessage = formatIncidentApiError(err);
       setError(errorMessage);
       console.error('Ошибка создания:', err);
       throw err;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   const updateIncident = useCallback(async (id, incidentData) => {
-    setLoading(true);
     setError(null);
     try {
       const response = await axios.put(`${API_URL}/${id}`, incidentData, {
         headers: { 'Content-Type': 'application/json' }
       });
-      const numId = typeof id === 'string' ? parseInt(id) : id;
-      setIncidents(prev => prev.map(item => 
-        item.id === numId ? response.data : item
+      setIncidents(prev => prev.map(item =>
+        idsEqual(item.id, id) ? response.data : item
       ));
       setCurrentIncident(response.data);
       return response.data;
     } catch (err) {
-      const errorMessage = handleApiError(err);
+      const errorMessage = formatIncidentApiError(err);
       setError(errorMessage);
       console.error('Ошибка обновления:', err);
       throw err;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   const deleteIncident = useCallback(async (id) => {
-    setLoading(true);
     setError(null);
     try {
       await axios.delete(`${API_URL}/${id}`);
-      const numId = typeof id === 'string' ? parseInt(id) : id;
-      setIncidents(prev => prev.filter(item => item.id !== numId));
+      setIncidents(prev => prev.filter(item => !idsEqual(item.id, id)));
+      setCurrentIncident((cur) => (cur && idsEqual(cur.id, id) ? null : cur));
       return true;
     } catch (err) {
-      const errorMessage = handleApiError(err);
+      const errorMessage = formatIncidentApiError(err);
       setError(errorMessage);
       console.error('Ошибка удаления:', err);
       throw err;
-    } finally {
-      setLoading(false);
     }
   }, []);
 

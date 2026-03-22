@@ -1,34 +1,23 @@
 import React from 'react';
 
-const ErrorMessage = ({ message, onRetry }) => {
+const ErrorMessage = ({ message, onRetry, onClose }) => {
   return (
-    <div style={{
-      backgroundColor: '#ffebee',
-      color: '#c62828',
-      padding: '15px',
-      borderRadius: '8px',
-      margin: '20px 0',
-      border: '1px solid #ef9a9a',
-      textAlign: 'center'
-    }}>
-      <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>
-        ❌ Ошибка: {message}
-      </p>
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#c62828',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          Повторить
-        </button>
-      )}
+    <div className="error-box" role="alert">
+      <div className="error-box-inner">
+        <p className="error-box-text">{message}</p>
+        <div className="error-box-actions">
+          {onRetry && (
+            <button type="button" className="btn btn--danger btn--sm" onClick={onRetry}>
+              Повторить
+            </button>
+          )}
+          {onClose && (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={onClose}>
+              Закрыть
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

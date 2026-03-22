@@ -1,145 +1,132 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { useIncidents } from '../context/IncidentsContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 
 const Detail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [event, setEvent] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const fetchEvent = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await axios.get(`http://localhost:5000/events/${id}`);
-      setEvent(response.data);
-    } catch (err) {
-      if (err.response?.status === 404) {
-        setError('Мероприятие не найдено');
-      } else {
-        setError(err.message || 'Не удалось загрузить мероприятие');
-      }
-      console.error('Ошибка загрузки:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!window.confirm(`Вы уверены, что хотите удалить мероприятие "${event?.name}"?`)) {
-      return;
-    }
-    
-    try {
-      await axios.delete(`http://localhost:5000/events/${id}`);
-      navigate('/');
-    } catch (err) {
-      setError(err.message || 'Не удалось удалить мероприятие');
-      console.error('Ошибка удаления:', err);
-    }
-  };
+  const {
+    currentIncident,
+    loading,
+    error,
+    fetchIncidentById,
+    deleteIncident,
+    clearError,
+    setCurrentIncident
+  } = useIncidents();
 
   useEffect(() => {
-    fetchEvent();
-  }, [id]);
+    clearError();
+    setCurrentIncident(null);
+    fetchIncidentById(id).catch(() => {});
+  }, [id, fetchIncidentById, clearError, setCurrentIncident]);
 
-  if (loading) return <LoadingSpinner />;
+  const handleDelete = async () => {
+    if (!window.confirm(`Удалить инцидент «${currentIncident?.name}»?`)) {
+      return;
+    }
+    try {
+      await deleteIncident(id);
+      navigate('/');
+    } catch {
+      /* сообщение в контексте */
+    }
+  };
 
-  if (error) {
+  const getSeverityText = (severity) => {
+    switch (severity) {
+      case 'критический': return 'Критический';
+      case 'высокий': return 'Высокий';
+      case 'средний': return 'Средний';
+      case 'низкий': return 'Низкий';
+      default: return severity || '—';
+    }
+  };
+
+  const getSeverityClass = (severity) => {
+    switch (severity) {
+      case 'критический': return 'severity-pill severity-pill--critical';
+      case 'высокий': return 'severity-pill severity-pill--high';
+      case 'средний': return 'severity-pill severity-pill--medium';
+      case 'низкий': return 'severity-pill severity-pill--low';
+      default: return 'severity-pill';
+    }
+  };
+
+  if (loading && !currentIncident) {
+    return <LoadingSpinner fullPage label="Загрузка инцидента…" />;
+  }
+
+  if (error && !currentIncident) {
     return (
-      <div style={{ padding: '20px' }}>
-        <ErrorMessage message={error} onRetry={fetchEvent} />
-        <Link to="/">
-          <button style={{
-            padding: '10px 20px',
-            backgroundColor: '#2196F3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '5px',
-            cursor: 'pointer',
-            marginTop: '20px'
-          }}>
-            ← На главную
-          </button>
-        </Link>
+      <div className="page-narrow">
+        <ErrorMessage
+          message={error}
+          onRetry={() => fetchIncidentById(id)}
+          onClose={clearError}
+        />
+        <Link to="/" className="btn btn--secondary">← На главную</Link>
       </div>
     );
   }
 
-  const getSecurityLevelText = (level) => {
-    switch(level) {
-      case 'high': return '🔴 Высокий';
-      case 'medium': return '🟡 Средний';
-      case 'low': return '🟢 Низкий';
-      default: return level;
-    }
-  };
+  if (!currentIncident) {
+    return null;
+  }
+
+  const inc = currentIncident;
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <Link to="/">
-        <button style={{
-          padding: '8px 16px',
-          backgroundColor: '#666',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer',
-          marginBottom: '20px'
-        }}>
-          ← Назад к списку
-        </button>
-      </Link>
-
-      <div style={{
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        padding: '20px',
-        backgroundColor: '#f9f9f9'
-      }}>
-        <h1>{event.name}</h1>
-        
-        <div style={{ marginTop: '20px' }}>
-          <p><strong>📅 Дата проведения:</strong> {event.date}</p>
-          <p><strong>📍 Место проведения:</strong> {event.place}</p>
-          <p><strong>👥 Количество участников:</strong> {event.participants.toLocaleString()} чел.</p>
-          <p><strong>🛡️ Уровень безопасности:</strong> {getSecurityLevelText(event.securityLevel)}</p>
-          <p><strong>👤 Ответственный за безопасность:</strong> {event.responsible}</p>
-        </div>
-
-        <div style={{ marginTop: '30px', display: 'flex', gap: '10px' }}>
-          <button
-            onClick={() => navigate(`/edit/${id}`)}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#FF9800',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer'
-            }}
-          >
-            ✏ Редактировать
-          </button>
-          <button
-            onClick={handleDelete}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#f44336',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer'
-            }}
-          >
-            🗑 Удалить
-          </button>
-        </div>
+    <div className="page-narrow">
+      <div className="page-toolbar">
+        <Link to="/" className="btn btn--ghost">← К списку</Link>
       </div>
+
+      {error && (
+        <div className="banner banner--error">
+          <span>{error}</span>
+          <button type="button" className="banner-dismiss" onClick={clearError} aria-label="Закрыть">×</button>
+        </div>
+      )}
+
+      <article className="card card--detail">
+        <div className="card-detail-head">
+          <h1 className="card-detail-title">{inc.name}</h1>
+          <span className={getSeverityClass(inc.severity)}>{getSeverityText(inc.severity)}</span>
+        </div>
+
+        <dl className="detail-grid">
+          <div>
+            <dt>Дата</dt>
+            <dd>{inc.date}</dd>
+          </div>
+          <div>
+            <dt>Место</dt>
+            <dd>{inc.location}</dd>
+          </div>
+        </dl>
+
+        <section className="detail-section">
+          <h2>Описание</h2>
+          <p className="detail-text">{inc.description}</p>
+        </section>
+
+        {inc.measures ? (
+          <section className="detail-section">
+            <h2>Принятые меры</h2>
+            <p className="detail-text">{inc.measures}</p>
+          </section>
+        ) : null}
+
+        <div className="btn-row">
+          <Link to={`/edit/${id}`} className="btn btn--primary">Редактировать</Link>
+          <button type="button" className="btn btn--danger" onClick={handleDelete}>
+            Удалить
+          </button>
+        </div>
+      </article>
     </div>
   );
 };
